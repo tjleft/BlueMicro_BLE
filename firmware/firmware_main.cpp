@@ -37,8 +37,12 @@ File file(InternalFS);
 PersistentState keyboardconfig;
 DynamicState keyboardstate;
 
-BlueMicro_tone speaker(&keyboardconfig, &keyboardstate);  /// A speaker to play notes and tunes...
+#ifdef ENABLE_AUDIO
+  BlueMicro_tone speaker(&keyboardconfig, &keyboardstate);  /// A speaker to play notes and tunes...
+#endif
 led_handler statusLEDs(&keyboardconfig, &keyboardstate);  /// Typically a Blue LED and a Red LED
+
+
 
 #ifdef BLUEMICRO_CONFIGURED_DISPLAY
   BlueMicro_Display OLED(&keyboardconfig, &keyboardstate);  /// Typically a Blue LED and a Red LED
@@ -48,6 +52,7 @@ KeyScanner keys(&keyboardconfig, &keyboardstate);
 Battery batterymonitor;
 
 static std::vector<uint16_t> stringbuffer; // buffer for macros to type into...
+static std::vector<HIDKeyboard> reportbuffer; 
 
 /**************************************************************************************************************************/
 void setupConfig() {
@@ -57,15 +62,22 @@ void setupConfig() {
   keyboardstate.statusble=0;  //initialize to a known state.
   keyboardstate.statuskb=0;   //initialize to a known state.
 
+  keyboardstate.user1=0;   //initialize to a known state.  
+  keyboardstate.user2=0;   //initialize to a known state. 
+  keyboardstate.user3=0;   //initialize to a known state.
+
   keyboardstate.helpmode = false;
   keyboardstate.timestamp = millis();
   keyboardstate.lastupdatetime = keyboardstate.timestamp;
+  keyboardstate.lastreporttime = 0;
+  keyboardstate.lastuseractiontime = 0;
 
   keyboardstate.connectionState = CONNECTION_NONE;
   keyboardstate.needReset = false;
   keyboardstate.needUnpair = false;
   keyboardstate.needFSReset = false;
   keyboardstate.save2flash = false;
+
 }
 
 /**************************************************************************************************************************/
@@ -128,6 +140,10 @@ void resetConfig()
 
   keyboardconfig.enableSerial = SERIAL_DEBUG_CLI_DEFAULT_ON;   
 
+  keyboardconfig.mode = 0; 
+  keyboardconfig.user1 = 0;  
+  keyboardconfig.user2 = 0; 
+
   keyboardconfig.matrixscaninterval=HIDREPORTINGINTERVAL;
   keyboardconfig.batteryinterval=BATTERYINTERVAL;
   keyboardconfig.keysendinterval=HIDREPORTINGINTERVAL;
@@ -141,6 +157,8 @@ void resetConfig()
   strcpy(keyboardconfig.BLEProfileName[0], "unpaired");
   strcpy(keyboardconfig.BLEProfileName[1], "unpaired");
   strcpy(keyboardconfig.BLEProfileName[2], "unpaired");
+
+
 }
 
 /**************************************************************************************************************************/
@@ -171,9 +189,10 @@ void setup() {
   #endif
  
   setupConfig();
-
+#ifdef ENABLE_AUDIO
  #ifdef SPEAKER_PIN
  speaker.setSpeakerPin(SPEAKER_PIN);
+ #endif
  #endif
 
   if (keyboardconfig.enableSerial) 
@@ -214,6 +233,7 @@ void setup() {
   //batterytimer.start();
 
   stringbuffer.clear();
+  reportbuffer.clear();
 
   if(keyboardconfig.enablePWMLED)
   {
@@ -239,9 +259,10 @@ void setup() {
       OLED.sleep();
     }
   #endif
-
+#ifdef ENABLE_AUDIO
   speaker.playTone(TONE_STARTUP);
   speaker.playTone(TONE_BLE_PROFILE);
+  #endif
 
 };
 /**************************************************************************************************************************/
@@ -348,6 +369,16 @@ void scanMatrix() {
         }
     }
 #endif
+
+void UpdateQueue()
+{
+  #ifdef ENABLE_COMBOS
+     stringbuffer.insert(stringbuffer.end(), combos.keycodebuffertosend.rbegin(),combos.keycodebuffertosend.rend());
+     combos.keycodebuffertosend.clear();
+  #endif
+
+}
+
 /**************************************************************************************************************************/
 // macro string queue management
 /**************************************************************************************************************************/
@@ -395,151 +426,203 @@ void process_keyboard_function(uint16_t keycode)
 {
   char buffer [50];
   uint8_t intval;
-   switch(keycode)
-  {
-    case RESET:
-      NVIC_SystemReset();
-      break;
-    case DEBUG:
-      keyboardconfig.enableSerial = !keyboardconfig.enableSerial;
-      keyboardstate.save2flash = true;
-      keyboardstate.needReset = true;
-      break;
-    case EEPROM_RESET:
-      keyboardstate.needFSReset = true;
-      break;
-    case CLEAR_BONDS:
-       // Bluefruit.clearBonds(); //removed in next BSP?
-       if (keyboardstate.connectionState == CONNECTION_BT) keyboardstate.needUnpair = true;
-        //Bluefruit.Central.clearBonds();
-      break;      
-    case DFU:
-      speaker.playTone(TONE_SLEEP);
-      speaker.playAllQueuedTonesNow();
-      enterOTADfu();
-      break;
-    case SERIAL_DFU:
-      speaker.playTone(TONE_SLEEP);
-      speaker.playAllQueuedTonesNow();
-      enterSerialDfu();
-      break;
-    case UF2_DFU:
-      speaker.playTone(TONE_SLEEP);
-      speaker.playAllQueuedTonesNow();
-      enterUf2Dfu();
-      break;
+  switch (keycode) {
+  case RESET:
+    NVIC_SystemReset();
+    break;
+  case DEBUG:
+    keyboardconfig.enableSerial = !keyboardconfig.enableSerial;
+    keyboardstate.save2flash = true;
+    keyboardstate.needReset = true;
+    break;
+  case EEPROM_RESET:
+    keyboardstate.needFSReset = true;
+    break;
+  case CLEAR_BONDS:
+    // Bluefruit.clearBonds(); //removed in next BSP?
+    if (keyboardstate.connectionState == CONNECTION_BT)
+      keyboardstate.needUnpair = true;
+    // Bluefruit.Central.clearBonds();
+    break;
+  case DFU:
+  #ifdef ENABLE_AUDIO
+    speaker.playTone(TONE_SLEEP);
+    speaker.playAllQueuedTonesNow();
+    #endif
+    enterOTADfu();
+    break;
+  case SERIAL_DFU:
+  #ifdef ENABLE_AUDIO
+    speaker.playTone(TONE_SLEEP);
+    speaker.playAllQueuedTonesNow();
+    #endif
+    enterSerialDfu();
+    break;
+  case UF2_DFU:
+  #ifdef ENABLE_AUDIO
+    speaker.playTone(TONE_SLEEP);
+    speaker.playAllQueuedTonesNow();
+    #endif
+    enterUf2Dfu();
+    break;
+  case HELP_MODE:
+    keyboardstate.helpmode = !keyboardstate.helpmode;
+    break;
+  case OUT_AUTO:
+    keyboardconfig.connectionMode = CONNECTION_MODE_AUTO;
+    if (keyboardstate.helpmode) {
+      addStringToQueue("Automatic USB/BLE - Active");
+      addKeycodeToQueue(KC_ENTER);
+      addStringToQueue("USB Only");
+      addKeycodeToQueue(KC_ENTER);
+      addStringToQueue("BLE Only");
+      addKeycodeToQueue(KC_ENTER);
+    }
+    break;
+  case OUT_USB:
+#ifdef NRF52840_XXAA // only the 840 has USB available.
+    keyboardconfig.connectionMode = CONNECTION_MODE_USB_ONLY;
+    if (keyboardstate.helpmode) {
+      addStringToQueue("Automatic USB/BLE");
+      addKeycodeToQueue(KC_ENTER);
+      addStringToQueue("USB Only - Active");
+      addKeycodeToQueue(KC_ENTER);
+      addStringToQueue("BLE Only");
+      addKeycodeToQueue(KC_ENTER);
+    }
+#else
+    if (keyboardstate.helpmode) {
+      addStringToQueue("USB not available on NRF52832");
+      addKeycodeToQueue(KC_ENTER);
+    }
+#endif
+    break;
+  case OUT_BT:
+    keyboardconfig.connectionMode = CONNECTION_MODE_BLE_ONLY;
+    if (keyboardstate.helpmode) {
+      addStringToQueue("Automatic USB/BLE");
+      addKeycodeToQueue(KC_ENTER);
+      addStringToQueue("USB Only");
+      addKeycodeToQueue(KC_ENTER);
+      addStringToQueue("BLE Only - Active");
+      addKeycodeToQueue(KC_ENTER);
+    }
+    break;
 
-    case HELP_MODE:
-       keyboardstate.helpmode = ! keyboardstate.helpmode;
-      break;  
-
-    case OUT_AUTO:
-      keyboardconfig.connectionMode = CONNECTION_MODE_AUTO;
-      if ( keyboardstate.helpmode) {
-        addStringToQueue("Automatic USB/BLE - Active");addKeycodeToQueue(KC_ENTER);
-        addStringToQueue("USB Only");addKeycodeToQueue(KC_ENTER);
-        addStringToQueue("BLE Only");addKeycodeToQueue(KC_ENTER);
-      }
-      break;
-    case OUT_USB:
-      #ifdef NRF52840_XXAA  // only the 840 has USB available.
-        keyboardconfig.connectionMode = CONNECTION_MODE_USB_ONLY;
-        if ( keyboardstate.helpmode) {
-          addStringToQueue("Automatic USB/BLE");addKeycodeToQueue(KC_ENTER);
-          addStringToQueue("USB Only - Active");addKeycodeToQueue(KC_ENTER);
-          addStringToQueue("BLE Only");addKeycodeToQueue(KC_ENTER);
-        }
-      #else
-        if ( keyboardstate.helpmode) {
-          addStringToQueue("USB not available on NRF52832");addKeycodeToQueue(KC_ENTER);
-        }   
-      #endif
-      break;
-    case OUT_BT:
-      keyboardconfig.connectionMode = CONNECTION_MODE_BLE_ONLY;
-      if ( keyboardstate.helpmode) {
-        addStringToQueue("Automatic USB/BLE");addKeycodeToQueue(KC_ENTER);
-        addStringToQueue("USB Only");addKeycodeToQueue(KC_ENTER);
-        addStringToQueue("BLE Only - Active");addKeycodeToQueue(KC_ENTER);
-      }
-      break;  
-
-    // BACKLIGHT FUNCTIONS
-    case BL_TOGG:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_TOGG");}
-      stepPWMMode();
+  // BACKLIGHT FUNCTIONS
+  case BL_TOGG:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_TOGG");
+    }
+    stepPWMMode();
     break;
-    case BL_STEP:  // step through modes
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_STEP");}
-      stepPWMMode();
+  case BL_STEP: // step through modes
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_STEP");
+    }
+    stepPWMMode();
     break;
-    case BL_ON:
-   if ( keyboardstate.helpmode) { addStringToQueue("BL_ON");}
-      setPWMMode(3);
-      PWMSetMaxVal();
+  case BL_ON:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_ON");
+    }
+    setPWMMode(3);
+    PWMSetMaxVal();
     break;
-    case BL_OFF:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_OFF");}
-      setPWMMode(0);
+  case BL_OFF:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_OFF");
+    }
+    setPWMMode(0);
     break;
-    case BL_INC:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_INC");}
-      incPWMMaxVal();
+  case BL_INC:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_INC");
+    }
+    incPWMMaxVal();
     break;
-    case BL_DEC:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_DEC");}
-      decPWMMaxVal();
+  case BL_DEC:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_DEC");
+    }
+    decPWMMaxVal();
     break;
-    case BL_BRTG:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_BRTG");}
-      setPWMMode(2);
+  case BL_BRTG:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_BRTG");
+    }
+    setPWMMode(2);
     break;
-    case BL_REACT:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_REACT");}
-      setPWMMode(1);
-      PWMSetMaxVal();
+  case BL_REACT:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_REACT");
+    }
+    setPWMMode(1);
+    PWMSetMaxVal();
     break;
-    case BL_STEPINC:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_STEPINC");}
-        incPWMStepSize();
-      break;
-    case BL_STEPDEC:
-    if ( keyboardstate.helpmode) {addStringToQueue("BL_STEPDEC");}
-        decPWMStepSize();
-      break;
-
-    case RGB_TOG:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_TOG");}
-      break;
-    case RGB_MODE_FORWARD:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_MODE_FORWARD");}
-      break;
-    case RGB_MODE_REVERSE:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_MODE_REVERSE");}
-      break;
-    case RGB_HUI:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_HUI");}
-      
-      break;      
-    case RGB_HUD:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_HUD");}
-      break;
-    case RGB_SAI:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_SAI");}
-      break;
-    case RGB_SAD:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_SAD");}
-      break;
-    case RGB_VAI:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_VAI");}
-      break;
-    case RGB_VAD:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_VAD");}
-      break;   
-    case RGB_MODE_PLAIN:
-      if ( keyboardstate.helpmode) {addStringToQueue("RGB_MODE_PLAIN");}
-      updateRGBmode(RGB_MODE_PLAIN);
-      break;
+  case BL_STEPINC:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_STEPINC");
+    }
+    incPWMStepSize();
+    break;
+  case BL_STEPDEC:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("BL_STEPDEC");
+    }
+    decPWMStepSize();
+    break;
+  case RGB_TOG:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_TOG");
+    }
+    break;
+  case RGB_MODE_FORWARD:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_MODE_FORWARD");
+    }
+    break;
+  case RGB_MODE_REVERSE:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_MODE_REVERSE");
+    }
+    break;
+  case RGB_HUI:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_HUI");
+    }
+    break;
+  case RGB_HUD:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_HUD");
+    }
+    break;
+  case RGB_SAI:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_SAI");
+    }
+    break;
+  case RGB_SAD:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_SAD");
+    }
+    break;
+  case RGB_VAI:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_VAI");
+    }
+    break;
+  case RGB_VAD:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_VAD");
+    }
+    break;
+  case RGB_MODE_PLAIN:
+    if (keyboardstate.helpmode) {
+      addStringToQueue("RGB_MODE_PLAIN");
+    }
+    updateRGBmode(RGB_MODE_PLAIN);
+    break;
     case RGB_MODE_BREATHE:
       if ( keyboardstate.helpmode) {addStringToQueue("RGB_MODE_BREATHE");}
       updateRGBmode(RGB_MODE_BREATHE);
@@ -580,7 +663,6 @@ void process_keyboard_function(uint16_t keycode)
       break;    
     case PRINT_BATTERY:
       intval = batterymonitor.vbat_per;
-
       switch (batterymonitor.batt_type)
       {
         case BATT_UNKNOWN:
@@ -594,8 +676,7 @@ void process_keyboard_function(uint16_t keycode)
             else
             {
               snprintf (buffer, sizeof(buffer), "VDD = %.0f mV (%3d %%)", batterymonitor.vbat_mv*1.0, intval);
-            }
-            
+            }    
         break;
         case BATT_LIPO:
             if (intval>99)
@@ -607,10 +688,20 @@ void process_keyboard_function(uint16_t keycode)
               sprintf (buffer, "LIPO = %.0f mV (%3d %%)", batterymonitor.vbat_mv*1.0, intval);
             }   
         break;
-      }
-      addStringToQueue(buffer);
-      addKeycodeToQueue(KC_ENTER);
-      break;
+        case BATT_VDDH:
+            if (intval>99)
+            {
+              sprintf (buffer, "LIPO = %.0f mV (%4d %%)", batterymonitor.vbat_mv*1.0, intval);
+            }
+            else
+            {
+              sprintf (buffer, "LIPO = %.0f mV (%3d %%)", batterymonitor.vbat_mv*1.0, intval);
+            }   
+        break;
+      } 
+    addStringToQueue(buffer);
+    addKeycodeToQueue(KC_ENTER);
+    break;
     case PRINT_INFO:
       addStringToQueue("Keyboard Name  : " DEVICE_NAME " "); addKeycodeToQueue(KC_ENTER);
       addStringToQueue("Keyboard Model : " DEVICE_MODEL " "); addKeycodeToQueue(KC_ENTER);
@@ -755,7 +846,7 @@ void process_keyboard_function(uint16_t keycode)
     case SYM_DEGREE: EXPAND_ALT_CODE(KC_KP_0, KC_KP_1, KC_KP_7, KC_KP_6) break; // Alt 0176 degree symbol
 
     case BLEPROFILE_1:
-      if (keyboardstate.connectionState != CONNECTION_USB) // reseting/rebooting KB when BLE Profile switching on USB would be ennoying...
+     // if (keyboardstate.connectionState != CONNECTION_USB) // reseting/rebooting KB when BLE Profile switching on USB would be ennoying...
         {
         #ifdef ARDUINO_NRF52_COMMUNITY
           keyboardconfig.BLEProfile = 0;
@@ -769,7 +860,7 @@ void process_keyboard_function(uint16_t keycode)
     break;
 
     case BLEPROFILE_2:
-      if (keyboardstate.connectionState != CONNECTION_USB) // reseting/rebooting KB when BLE Profile switching on USB would be ennoying...
+     // if (keyboardstate.connectionState != CONNECTION_USB) // reseting/rebooting KB when BLE Profile switching on USB would be ennoying...
       {
         #ifdef ARDUINO_NRF52_COMMUNITY
           keyboardconfig.BLEProfile = 1;
@@ -783,7 +874,7 @@ void process_keyboard_function(uint16_t keycode)
     break;
 
     case BLEPROFILE_3:
-      if (keyboardstate.connectionState != CONNECTION_USB) // reseting/rebooting KB when BLE Profile switching on USB would be ennoying...
+    //  if (keyboardstate.connectionState != CONNECTION_USB) // reseting/rebooting KB when BLE Profile switching on USB would be ennoying...
       {
         #ifdef ARDUINO_NRF52_COMMUNITY
           keyboardconfig.BLEProfile = 2;
@@ -812,22 +903,22 @@ void process_keyboard_function(uint16_t keycode)
 /**************************************************************************************************************************/
 void process_user_special_keys()
 {
-  uint8_t mods = KeyScanner::currentReport[0] ;
-          LOG_LV1("SPECIAL","PROCESS: %i %i %i %i %i %i %i %i %i" ,KeyScanner::special_key,mods, KeyScanner::currentReport[1],KeyScanner::currentReport[2],KeyScanner::currentReport[3], KeyScanner::currentReport[4],KeyScanner::currentReport[5], KeyScanner::currentReport[6],KeyScanner::bufferposition );  
+  uint8_t mods = KeyScanner::currentReport.modifier ;
+          LOG_LV1("SPECIAL","PROCESS: %i %i %i %i %i %i %i %i %i" ,KeyScanner::special_key,mods, KeyScanner::currentReport.keycode[0],KeyScanner::currentReport.keycode[1],KeyScanner::currentReport.keycode[2], KeyScanner::currentReport.keycode[3],KeyScanner::currentReport.keycode[4], KeyScanner::currentReport.keycode[5],KeyScanner::bufferposition );  
    switch(KeyScanner::special_key)
   {
     case KS(KC_ESC):
         switch (mods)
         {
-          case 0:          KeyScanner::currentReport[KeyScanner::bufferposition] = KC_ESC;   KeyScanner::reportChanged = true; break;
-          case BIT_LCTRL:  KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
-          case BIT_LSHIFT: KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = BIT_LSHIFT; break;
-          case BIT_LALT:   KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
-          case BIT_LGUI:   KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
-          case BIT_RCTRL:  KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
-          case BIT_RSHIFT: KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
-          case BIT_RALT:   KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
-          case BIT_RGUI:   KeyScanner::currentReport[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport[0]  = 0; break;
+          case 0:          KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_ESC;   KeyScanner::reportChanged = true; break;
+          case BIT_LCTRL:  KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
+          case BIT_LSHIFT: KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = BIT_LSHIFT; break;
+          case BIT_LALT:   KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
+          case BIT_LGUI:   KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
+          case BIT_RCTRL:  KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
+          case BIT_RSHIFT: KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
+          case BIT_RALT:   KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
+          case BIT_RGUI:   KeyScanner::currentReport.keycode[KeyScanner::bufferposition] = KC_GRAVE; KeyScanner::reportChanged = true; KeyScanner::currentReport.modifier  = 0; break;
         }  
       break;
     default:
@@ -852,46 +943,57 @@ void sendKeyPresses() {
       KeyScanner::macro = 0;
       
   } 
+  UpdateQueue();
   if (!stringbuffer.empty()) // if the macro buffer isn't empty, send the first character of the buffer... which is located at the back of the queue
   {  
-    uint8_t report[8] = {0, 0, 0 ,0, 0, 0, 0, 0}; ;
+    HIDKeyboard reportarray = {0, {0, 0 ,0, 0, 0, 0}, 0};
     uint16_t keyreport = stringbuffer.back();
     stringbuffer.pop_back();
     
-    report[0] = static_cast<uint8_t>((keyreport & 0xFF00) >> 8);// mods
-    report[1] = static_cast<uint8_t>(keyreport & 0x00FF);
-    switch (keyboardstate.connectionState)
-    {
-      case CONNECTION_USB: usb_sendKeys(report); break;
-      case CONNECTION_BT: bt_sendKeys(report); break;
-    }
-    delay(keyboardconfig.keysendinterval*2);
-    if (stringbuffer.empty()) // make sure to send an empty report when done...
-    { 
-      report[0] = 0;
-      report[1] = 0;
-      switch (keyboardstate.connectionState)
-      {
-        case CONNECTION_USB: usb_sendKeys(report); break;
-        case CONNECTION_BT: bt_sendKeys(report); break;
-      }
-      delay(keyboardconfig.keysendinterval*2);
-    }
-    else
-    {
-      
+    reportarray.modifier = static_cast<uint8_t>((keyreport & 0xFF00) >> 8);// mods
+    reportarray.keycode[0] = static_cast<uint8_t>(keyreport & 0x00FF);
+
+    auto buffer_iterator = reportbuffer.begin();
+    buffer_iterator = reportbuffer.insert(buffer_iterator, reportarray);
+
       uint16_t lookahead_keyreport = stringbuffer.back();
       if (lookahead_keyreport == keyreport) // if the next key is the same, make sure to send a key release before sending it again... but keep the mods.
       {
-        report[0] = static_cast<uint8_t>((keyreport & 0xFF00) >> 8);// mods;
-        report[1] = 0;
-        switch (keyboardstate.connectionState)
-        {
-          case CONNECTION_USB: usb_sendKeys(report); break;
-          case CONNECTION_BT: bt_sendKeys(report); break;
-        }
-        delay(keyboardconfig.keysendinterval*2);
+        reportarray.modifier = static_cast<uint8_t>((keyreport & 0xFF00) >> 8);// mods;
+        reportarray.keycode[0] = 0;
+        buffer_iterator = reportbuffer.begin();
+        buffer_iterator = reportbuffer.insert(buffer_iterator, reportarray);
       }
+  }  
+
+
+ 
+  if (!reportbuffer.empty()) // if the report buffer isn't empty, send the first character of the buffer... which is located at the end of the queue
+  {  
+    HIDKeyboard reportarray  = reportbuffer.back();
+    reportbuffer.pop_back();
+    switch (keyboardstate.connectionState)
+    {
+      case CONNECTION_USB: usb_sendKeys(reportarray); delay(keyboardconfig.keysendinterval*2); break;
+      case CONNECTION_BT: bt_sendKeys(reportarray); delay(keyboardconfig.keysendinterval*2); break;
+      case CONNECTION_NONE: // save the report for when we reconnect
+              auto it = reportbuffer.end();
+              it = reportbuffer.insert(it, reportarray);
+      break; 
+    }
+    
+    if (reportbuffer.empty()) // make sure to send an empty report when done...
+    { 
+      HIDKeyboard emptyReport = {0, {0, 0 ,0, 0, 0, 0}, 0}; 
+      switch (keyboardstate.connectionState)
+      {
+        case CONNECTION_USB: usb_sendKeys(emptyReport); delay(keyboardconfig.keysendinterval*2); break;
+        case CONNECTION_BT: bt_sendKeys(emptyReport); delay(keyboardconfig.keysendinterval*2); break;
+        case CONNECTION_NONE: // save the report for when we reconnect
+                      auto it = reportbuffer.end();
+                      it = reportbuffer.insert(it, emptyReport);
+        break; 
+      } 
     }
    // KeyScanner::processingmacros=0;
   }
@@ -901,8 +1003,12 @@ void sendKeyPresses() {
     {
       case CONNECTION_USB: usb_sendKeys(KeyScanner::currentReport); break;
       case CONNECTION_BT: bt_sendKeys(KeyScanner::currentReport); break;
+      case CONNECTION_NONE: // save the report for when we reconnect
+                      auto it = reportbuffer.begin();
+                      it = reportbuffer.insert(it, KeyScanner::currentReport);    
+      break; 
     }
-        LOG_LV1("MXSCAN","SEND: %i %i %i %i %i %i %i %i %i " ,keyboardstate.timestamp,KeyScanner::currentReport[0], KeyScanner::currentReport[1],KeyScanner::currentReport[2],KeyScanner::currentReport[3], KeyScanner::currentReport[4],KeyScanner::currentReport[5], KeyScanner::currentReport[6],KeyScanner::currentReport[7] );        
+        LOG_LV1("MXSCAN","SEND: %i %i %i %i %i %i %i %i %i " ,keyboardstate.timestamp,KeyScanner::currentReport.modifier, KeyScanner::currentReport.keycode[0],KeyScanner::currentReport.keycode[1],KeyScanner::currentReport.keycode[2], KeyScanner::currentReport.keycode[3],KeyScanner::currentReport.keycode[4], KeyScanner::currentReport.keycode[5],KeyScanner::currentReport.layer);        
   } else if (KeyScanner::specialfunction > 0)
   {
     process_keyboard_function(KeyScanner::specialfunction);
@@ -913,6 +1019,11 @@ void sendKeyPresses() {
     {
       case CONNECTION_USB: usb_sendMediaKey(KeyScanner::consumer); break;
       case CONNECTION_BT: bt_sendMediaKey(KeyScanner::consumer); break;
+      case CONNECTION_NONE: 
+      #ifdef ENABLE_AUDIO
+      speaker.playTone(TONE_BLE_DISCONNECT);
+      #endif
+       break; // we have lost a report!
     }
     KeyScanner::consumer = 0; 
   } else if (KeyScanner::mouse > 0)
@@ -921,6 +1032,11 @@ void sendKeyPresses() {
     {
       case CONNECTION_USB: usb_sendMouseKey(KeyScanner::mouse); break;
       case CONNECTION_BT: bt_sendMouseKey(KeyScanner::mouse); break;
+      case CONNECTION_NONE: 
+      #ifdef ENABLE_AUDIO
+      speaker.playTone(TONE_BLE_DISCONNECT); 
+      #endif
+      break; // we have lost a report!
     }
     KeyScanner::mouse = 0; 
   }
@@ -1003,9 +1119,9 @@ void keyscantimer_callback(TimerHandle_t _handle) {
 // cppcheck-suppress unusedFunction
 void loop() {  // has task priority TASK_PRIO_LOW     
   updateWDT();
-
+#ifdef ENABLE_AUDIO
   speaker.processTones();
-
+#endif
   if (keyboardconfig.enableSerial)
   {
     handleSerial();
@@ -1022,6 +1138,7 @@ void loop() {  // has task priority TASK_PRIO_LOW
             bt_stopAdv();
             keyboardstate.connectionState = CONNECTION_USB;
             keyboardstate.lastuseractiontime = millis(); // a USB connection will reset sleep timer... 
+            //speaker.playTone(TONE_BLE_CONNECT);
           }
         }
       else if (bt_isConnected())
@@ -1030,6 +1147,7 @@ void loop() {  // has task priority TASK_PRIO_LOW
           {
             keyboardstate.connectionState = CONNECTION_BT;
             keyboardstate.lastuseractiontime = millis(); // a BLE connection will reset sleep timer...
+            //speaker.playTone(TONE_BLE_CONNECT);
           }
         }
         else
@@ -1038,6 +1156,7 @@ void loop() {  // has task priority TASK_PRIO_LOW
           {
             bt_startAdv();
             keyboardstate.connectionState = CONNECTION_NONE;
+            //speaker.playTone(TONE_BLE_DISCONNECT);
             // disconnecting won't reset sleep timer.
           }
         }
@@ -1111,7 +1230,7 @@ void LowestPriorityloop()
   
 
    keyboardstate.lastuseractiontime = max(KeyScanner::getLastPressed(),keyboardstate.lastuseractiontime); // use the latest time to check for sleep...
-   unsigned long timesincelastkeypress = keyboardstate.timestamp - keyboardstate.lastuseractiontime;
+   unsigned long timesincelastkeypress = keyboardstate.timestamp - KeyScanner::getLastPressed();
 
   updateBLEStatus();
   

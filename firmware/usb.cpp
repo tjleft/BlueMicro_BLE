@@ -52,7 +52,7 @@ void usb_setup()
   USBDevice.setManufacturerDescriptor(MANUFACTURER_NAME);
   USBDevice.setProductDescriptor(DEVICE_NAME);
 
-  USBhid.setPollInterval(2);
+  USBhid.setPollInterval(8);// was 2
   USBhid.setReportDescriptor(desc_hid_report, sizeof(desc_hid_report));
   USBhid.setReportCallback(NULL, hid_report_callback);
   USBhid.begin();
@@ -79,23 +79,13 @@ void usb_wakeup()
   #endif
 }
 
-void usb_sendKeys(uint8_t currentReport[8])
+void usb_sendKeys(HIDKeyboard currentReport)
 {
   #ifdef TINYUSB_AVAILABLE
-  uint8_t keycode[6];
-  uint8_t mods = 0;
-
-  mods = currentReport[0];                                                 // modifiers
-  keycode[0] = currentReport[1];                                           // Buffer
-  keycode[1] = currentReport[2];                                           // Buffer
-  keycode[2] = currentReport[3];                                           // Buffer
-  keycode[3] = currentReport[4];                                           // Buffer
-  keycode[4] = currentReport[5];                                           // Buffer
-  keycode[5] = currentReport[6];                                           // Buffer
-
-  USBhid.keyboardReport(RID_KEYBOARD, mods, keycode);
+  USBhid.keyboardReport(RID_KEYBOARD, currentReport.modifier, currentReport.keycode);
   #endif
 }
+
 
 void usb_sendMediaKey(uint16_t keycode)
 {

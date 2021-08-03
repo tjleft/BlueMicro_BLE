@@ -43,19 +43,20 @@ void BlueMicro_tone::playToneNow(unsigned int frequency, unsigned long duration)
 {
     if (_pin)
     {
-  #ifdef SPEAKER_EN_PIN
-    digitalWrite(SPEAKER_EN_PIN, HIGH);
+  #ifdef SPEAKER_PIN
+    digitalWrite(SPEAKER_PIN, HIGH);
     delay(50);
   #endif
 
   tone(_pin, frequency, duration);
   delay(duration);
 
-  #ifdef SPEAKER_EN_PIN
-    digitalWrite(SPEAKER_EN_PIN, LOW);
+  #ifdef SPEAKER_PIN
+    digitalWrite(SPEAKER_PIN, LOW);
   #endif
   }
 }
+
 
 void BlueMicro_tone::playAllQueuedTonesNow()
 {
@@ -66,6 +67,7 @@ void BlueMicro_tone::playAllQueuedTonesNow()
   }
 }
 
+// cppcheck-suppress unusedFunction
 void BlueMicro_tone::clearAllQueuedTones()
 {
   while (!toneQueue.empty()) toneQueue.pop();
@@ -82,7 +84,7 @@ void BlueMicro_tone::processTones()
     toneQueue.pop();
     if (_pin)
     {
-    #ifdef SPEAKER_EN_PIN
+    #ifdef SPEAKER_PIN
       digitalWrite(_pin, HIGH);
       delay(50);
     #endif
@@ -130,8 +132,8 @@ void BlueMicro_tone::processTones()
       break;
     }
 
-    #ifdef SPEAKER_EN_PIN
-      digitalWrite(SPEAKER_EN_PIN, LOW);
+    #ifdef SPEAKER_PIN
+      digitalWrite(SPEAKER_PIN, LOW);
     #endif
     }
     toneDelay = millis();
@@ -142,9 +144,8 @@ void BlueMicro_tone::processTones()
 // Hold is an optional bool that specifies if this note should be held a
 // little longer, i.e. for eigth notes that are tied together.
 // While waiting for a note to play the waitBreath delay function is used
-// so breath detection and pixel animation continues to run.  No tones
-// will play if the slide switch is in the -/off position or all the
-// candles have been blown out.
+// so breath detection and pixel animation continues to run. 
+// cppcheck-suppress unusedFunction
 void BlueMicro_tone::playNoteNow(int frequency, int duration, bool hold=false) {
 
   if (hold) {
@@ -166,11 +167,11 @@ void BlueMicro_tone::playNoteNow(int frequency, int duration)
     playNoteNow( frequency,  duration, false);
 }
 
-std::queue<toneList_t> BlueMicro_tone::toneQueue;
-uint32_t BlueMicro_tone::toneDelay = 0;
-PersistentState*  BlueMicro_tone::config = NULL;
-DynamicState*  BlueMicro_tone::status  = NULL;
-namespace std
-{
-  void __throw_bad_alloc() { while(true); }
-}
+
+#ifdef ENABLE_AUDIO
+ // std::queue<toneList_t> BlueMicro_tone::toneQueue;
+ // uint32_t BlueMicro_tone::toneDelay = 0;
+ // PersistentState*  BlueMicro_tone::config = NULL;
+  //DynamicState*  BlueMicro_tone::status  = NULL; 
+#endif
+

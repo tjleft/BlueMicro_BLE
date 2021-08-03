@@ -1,5 +1,18 @@
 # BlueMicro Firmware  [![Current Version](https://img.shields.io/github/v/tag/jpconstantineau/BlueMicro_BLE)](https://github.com/jpconstantineau/BlueMicro_BLE/tags)  ![Build on Docker](https://github.com/jpconstantineau/BlueMicro_BLE/workflows/Build%20on%20Docker/badge.svg)
 
+# WARNING: Do not upgrade Adafruit nRF52 to release 0.22.0 or 0.22.1!
+On May 19, 2021, Adafruit released version 0.22.0 of their nRF52 Arduino board support package without fixing the high power consumption issue reported in [November 2020](https://github.com/adafruit/Adafruit_nRF52_Arduino/issues/600).
+
+This release makes significant changes in how Bluetooth pairing is handled and uses the ARM CryptoCell CC310.  This component increases current consumption by a constant 6mA.
+
+A fix to this high current consumption has been merged into the HEAD of the repository but has not been released yet. See the PR [here](https://github.com/adafruit/Adafruit_nRF52_Arduino/pull/654)
+
+The Fix has been tested and successfully fixes the issue. Updated current consumption has been documented on the [issue](https://github.com/adafruit/Adafruit_nRF52_Arduino/issues/600#issuecomment-855156906)
+
+We will be updating this note once the fix is released and tested with the BlueMicro_BLE firmware.
+
+## Adafruit 0.23.0 has been released with the cryptocell high current consumption fix.  There were many other changes with 0.22 and 0.23 releases and haven't been tested yet with BlueMicro_BLE firmware. 
+
 **A Keyboard Firmware for nRF52832 and nRF52840 Boards**
 
 BlueMicro_BLE is a keyboard firmware that builds on top the Adafruit nRF52 board support package (BSP) for their line of Adafruit nRF52 Feather Boards.
@@ -12,7 +25,7 @@ By starting with the simple hid_keyboard.ino example provided with the Arduino b
 
 | Branch  | Github Actions - Docker (Adafruit BSP) | Github Actions - Docker (Community BSP) |Github Actions - Ubuntu (Community BSP) | Jenkins - Windows |
 | ------  | ------           | ------       | ------                  | ------            |
-| Master  |![Build on Docker](https://github.com/jpconstantineau/BlueMicro_BLE/workflows/Build%20on%20Docker/badge.svg?branch=master)|  | ![Build on Ubuntu](https://github.com/jpconstantineau/BlueMicro_BLE/workflows/Build%20on%20Ubuntu/badge.svg?branch=master) | ![Build Status](http://toronto.jpconstantineau.com:8585/buildStatus/icon?job=BlueMicro_BLE-master) |
+| Master  | [![Build on Docker - Adafruit](https://github.com/jpconstantineau/BlueMicro_BLE/actions/workflows/build_docker_adafruit.yml/badge.svg)](https://github.com/jpconstantineau/BlueMicro_BLE/actions/workflows/build_docker_adafruit.yml) | [![Build on Docker - Community](https://github.com/jpconstantineau/BlueMicro_BLE/actions/workflows/build_docker_community.yml/badge.svg)](https://github.com/jpconstantineau/BlueMicro_BLE/actions/workflows/build_docker_community.yml) | [![Build on Ubuntu](https://github.com/jpconstantineau/BlueMicro_BLE/actions/workflows/build_ubuntu.yml/badge.svg)](https://github.com/jpconstantineau/BlueMicro_BLE/actions/workflows/build_ubuntu.yml) | ![Build Status](http://toronto.jpconstantineau.com:8585/buildStatus/icon?job=BlueMicro_BLE-master) |
 | Develop |![Build on Docker - Adafruit](https://github.com/jpconstantineau/BlueMicro_BLE/workflows/Build%20on%20Docker%20-%20Adafruit/badge.svg)|![Build on Docker - Community](https://github.com/jpconstantineau/BlueMicro_BLE/workflows/Build%20on%20Docker%20-%20Community/badge.svg) | ![Build on Ubuntu](https://github.com/jpconstantineau/BlueMicro_BLE/workflows/Build%20on%20Ubuntu/badge.svg?branch=develop) | ![Build Status](http://toronto.jpconstantineau.com:8585/buildStatus/icon?job=BlueMicro_BLE-develop) |
 
 
